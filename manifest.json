@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Reuse Tab",
+  "version": "0.1.0",
+  "description": "既に開いている URL を新しいタブではなく既存のタブで開き直す",
+  "permissions": ["tabs", "webNavigation", "storage"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "重複タブを統合"
+  }
+}
