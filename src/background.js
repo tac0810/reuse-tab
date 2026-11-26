@@ -47,19 +47,23 @@ chrome.tabs.onUpdated.addListener((_id, info) => {
   if (info.url) updateBadge();
 });
 
-async function handle(tabId, url) {
+// 同じ URL のタブが同時に開かれたとき、互いを統合先にして閉じ合わないよう1件ずつ処理する
+let queue = Promise.resolve();
+
+function handle(tabId, url) {
   // 新規タブページなど対象外の URL は最初の http(s) 遷移まで待つ
   if (!urlKey(url) || !fresh.has(tabId)) return;
   const openerTabId = fresh.get(tabId);
   fresh.delete(tabId); // 同じタブを二重に処理しない
   handled.add(tabId);
+  queue = queue
+    .then(() => merge(tabId, url, openerTabId))
+    // 処理中にタブが閉じられた場合など。何もしない
+    .catch((e) => console.debug("reuse-tab:", e));
+}
 
-  let newTab;
-  try {
-    newTab = await chrome.tabs.get(tabId);
-  } catch {
-    return;
-  }
+async function merge(tabId, url, openerTabId) {
+  const newTab = await chrome.tabs.get(tabId);
   const tabs = await chrome.tabs.query({});
   const existing = findExisting(tabs, newTab, url, openerTabId ?? newTab.openerTabId);
   if (!existing) return;
@@ -78,7 +82,7 @@ async function handle(tabId, url) {
 chrome.action.onClicked.addListener(async () => {
   const tabs = await chrome.tabs.query({});
   const ids = planMerge(tabs);
-  if (ids.length) await chrome.tabs.remove(ids);
+  if (ids.length) await chrome.tabs.remove(ids).catch((e) => console.debug("reuse-tab:", e));
   updateBadge();
 });
 
