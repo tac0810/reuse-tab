@@ -6,14 +6,16 @@ const STARTUP_GRACE_MS = 10_000;
 let startupAt = 0;
 
 // 新規作成され、まだ最初の http(s) 遷移を終えていないタブ。
-// イベントがほぼ同時に届くため、await を挟まず同期的に更新する。
-const fresh = new Set();
+// tabId → 開いた元タブの ID。イベントがほぼ同時に届くため、await を挟まず同期的に更新する。
+const fresh = new Map();
+// 判定済みのタブ。後から届くイベントで fresh に戻さないために使う。
+const handled = new Set();
 
 const inStartupGrace = () => Date.now() - startupAt < STARTUP_GRACE_MS;
 
-function markFresh(tabId) {
-  if (inStartupGrace()) return false;
-  fresh.add(tabId);
+function markFresh(tabId, openerTabId) {
+  if (inStartupGrace() || handled.has(tabId)) return false;
+  fresh.set(tabId, openerTabId ?? fresh.get(tabId));
   return true;
 }
 
@@ -22,13 +24,13 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 chrome.tabs.onCreated.addListener((tab) => {
-  if (markFresh(tab.id) && tab.pendingUrl) handle(tab.id, tab.pendingUrl);
+  if (markFresh(tab.id, tab.openerTabId) && tab.pendingUrl) handle(tab.id, tab.pendingUrl);
   updateBadge();
 });
 
 // ページ内のリンク（target=_blank、Cmd/Ctrl+クリック、window.open）から作られたタブ
-chrome.webNavigation.onCreatedNavigationTarget.addListener(({ tabId, url }) => {
-  if (markFresh(tabId)) handle(tabId, url);
+chrome.webNavigation.onCreatedNavigationTarget.addListener(({ tabId, sourceTabId, url }) => {
+  if (markFresh(tabId, sourceTabId)) handle(tabId, url);
 });
 
 chrome.webNavigation.onBeforeNavigate.addListener(({ tabId, frameId, url }) => {
@@ -37,6 +39,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(({ tabId, frameId, url }) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   fresh.delete(tabId);
+  handled.delete(tabId);
   updateBadge();
 });
 
@@ -47,7 +50,9 @@ chrome.tabs.onUpdated.addListener((_id, info) => {
 async function handle(tabId, url) {
   // 新規タブページなど対象外の URL は最初の http(s) 遷移まで待つ
   if (!urlKey(url) || !fresh.has(tabId)) return;
+  const openerTabId = fresh.get(tabId);
   fresh.delete(tabId); // 同じタブを二重に処理しない
+  handled.add(tabId);
 
   let newTab;
   try {
@@ -56,7 +61,7 @@ async function handle(tabId, url) {
     return;
   }
   const tabs = await chrome.tabs.query({});
-  const existing = findExisting(tabs, newTab, url);
+  const existing = findExisting(tabs, newTab, url, openerTabId ?? newTab.openerTabId);
   if (!existing) return;
 
   if (existing.url === url) {

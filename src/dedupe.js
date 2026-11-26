@@ -12,9 +12,12 @@ export function pickKeeper(tabs) {
 }
 
 // 新しく開いたタブと同じキーの既存タブを探す。なければ null。
-export function findExisting(tabs, newTab, url) {
+// 開いた元タブ（openerTabId）が同じキーなら、明示的に別タブで開いたとみなし null。
+export function findExisting(tabs, newTab, url, openerTabId) {
   const key = urlKey(url);
   if (!key) return null;
+  const opener = tabs.find((t) => t.id === openerTabId);
+  if (opener && urlKey(opener.url || opener.pendingUrl) === key) return null;
   const candidates = tabs.filter(
     (t) =>
       t.id !== newTab.id &&

@@ -45,3 +45,10 @@ test("planMerge: キーごとに1つ残して閉じる", () => {
   assert.deepEqual(planMerge(tabs).sort(), [1, 3]);
   assert.equal(countDuplicates(tabs), 2);
 });
+
+test("findExisting: 開いた元タブが同じキーなら統合しない", () => {
+  const tabs = [tab(1, "https://a.com/x"), tab(2, "https://a.com/y")];
+  assert.equal(findExisting(tabs, { id: 3 }, "https://a.com/x?new", 1), null);
+  assert.equal(findExisting(tabs, { id: 3 }, "https://a.com/x?new", 2).id, 1);
+  assert.equal(findExisting(tabs, { id: 3 }, "https://a.com/x?new", 99).id, 1);
+});
